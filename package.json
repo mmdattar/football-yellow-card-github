@@ -1,0 +1,16 @@
+{
+  "name": "yellow-card-analyzer",
+  "version": "1.0.0",
+  "description": "Football Yellow Card Live Collector & Analyzer (Capacitor Android)",
+  "private": true,
+  "scripts": {
+    "prepare:web": "mkdir -p www/data && cp index.html www/index.html && cp data/matches.json www/data/matches.json"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}
