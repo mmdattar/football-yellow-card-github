@@ -1,0 +1,8 @@
+{
+  "appId": "com.yellowcard.analyzer",
+  "appName": "تحلیلگر کارت زرد",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
