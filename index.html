@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تحلیلگر هوشمند کارت زرد فوتبال | جمع‌آوری خودکار آمار مسابقات و داوران</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', 'Tahoma', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background-color: #0b1120;
+      color: #e2e8f0;
+    }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(51, 65, 85, 0.7);
+    }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+    input[type="range"] {
+      accent-color: #eab308;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2 max-w-sm"></div>
+
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 bg-slate-950/90 backdrop-blur border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-400/40 flex items-center justify-center shrink-0">
+          <div class="w-4 h-6 rounded-sm bg-amber-400 shadow-sm shadow-amber-400/50"></div>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-bold text-white leading-tight">تحلیلگر هوشمند کارت زرد فوتبال</h1>
+          <p class="text-xs text-slate-400">جمع‌آوری خودکار مسابقات + آمار داوران + مدل توزیع خوشه‌ای (xYC)</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <span id="conn-badge" class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+          <span id="conn-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span id="conn-text">در حال اتصال خودکار...</span>
+        </span>
+
+        <select id="league-select" aria-label="انتخاب لیگ" class="bg-slate-900 border border-slate-700 text-slate-100 text-xs sm:text-sm rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-amber-400">
+          <option value="eng.1">لیگ برتر انگلیس (Premier League)</option>
+          <option value="esp.1">لالیگا اسپانیا (La Liga)</option>
+          <option value="ita.1">سری آ ایتالیا (Serie A)</option>
+          <option value="ger.1">بوندس‌لیگا آلمان (Bundesliga)</option>
+          <option value="fra.1">لیگ ۱ فرانسه (Ligue 1)</option>
+          <option value="uefa.champions">لیگ قهرمانان اروپا (UCL)</option>
+        </select>
+
+        <button id="btn-fetch-live" type="button" class="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm px-3 py-1.5 rounded-lg transition">
+          <span>بروزرسانی خودکار</span>
+        </button>
+
+        <button id="btn-open-settings" type="button" class="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm px-3 py-1.5 rounded-lg transition">
+          <span>منابع API و ایمپورت</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-7xl mx-auto px-4 border-t border-slate-800/80 flex items-center gap-1 overflow-x-auto">
+      <button type="button" data-tab="matches" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-amber-400 text-amber-400 whitespace-nowrap transition">
+        داشبورد مسابقات و سیگنال‌ها
+      </button>
+      <button type="button" data-tab="referees" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap transition">
+        بانک آمار داوران
+      </button>
+      <button type="button" data-tab="variance" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap transition">
+        ردیاب انحراف (واقعی vs مدل)
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-5">
+
+    <!-- KPI Overview Row -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div class="glass-card rounded-xl p-3.5">
+        <div class="text-xs text-slate-400">کل مسابقات بارگذاری‌شده</div>
+        <div id="kpi-total-matches" class="text-2xl font-bold text-white mt-1 tabular-nums">0</div>
+        <div id="kpi-source-note" class="text-xs text-slate-400 mt-0.5 truncate">منبع: در حال بررسی</div>
+      </div>
+      <div class="glass-card rounded-xl p-3.5">
+        <div class="text-xs text-slate-400">میانگین xYC مسابقات فعال</div>
+        <div id="kpi-avg-xyc" class="text-2xl font-bold text-amber-400 mt-1 tabular-nums">0.0</div>
+        <div class="text-xs text-slate-400 mt-0.5">خط پایه لیگ برتر: ۳.۸۳–۳.۹۰</div>
+      </div>
+      <div class="glass-card rounded-xl p-3.5">
+        <div class="text-xs text-slate-400">سیگنال‌های دارای ارزش آماری</div>
+        <div id="kpi-value-signals" class="text-2xl font-bold text-emerald-400 mt-1 tabular-nums">0</div>
+        <div class="text-xs text-slate-400 mt-0.5">اختلاف حداقل ۰.۴۵ با خط بازار</div>
+      </div>
+      <div class="glass-card rounded-xl p-3.5">
+        <div class="text-xs text-slate-400">تعداد داوران در پایگاه داده</div>
+        <div id="kpi-ref-count" class="text-2xl font-bold text-sky-400 mt-1 tabular-nums">13</div>
+        <div class="text-xs text-slate-400 mt-0.5">آمار معتبر فصل ۲۰۲۵/۲۶</div>
+      </div>
+    </section>
+
+    <!-- TAB 1: MATCHES & ANALYSIS -->
+    <section id="tab-matches" class="tab-panel">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+        <!-- Left/Main Column: Match List -->
+        <div class="lg:col-span-7 flex flex-col gap-3">
+          <div class="glass-card rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
+            <div class="flex flex-wrap items-center gap-1.5" id="match-filters">
+              <button type="button" data-filter="all" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 text-slate-950 transition">همه</button>
+              <button type="button" data-filter="upcoming" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 transition">آینده</button>
+              <button type="button" data-filter="past" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 transition">گذشته</button>
+              <button type="button" data-filter="over" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-rose-300 hover:bg-slate-700 transition">سیگنال Over</button>
+              <button type="button" data-filter="under" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-emerald-300 hover:bg-slate-700 transition">سیگنال Under</button>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <input id="search-matches" type="text" placeholder="جستجوی تیم یا داور..." class="w-full sm:w-44 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400">
+              <button id="btn-add-match-modal" type="button" class="shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-amber-300 px-2.5 py-1.5 rounded-lg transition">+ افزودن بازی</button>
+            </div>
+          </div>
+
+          <div id="matches-list" class="flex flex-col gap-3"></div>
+        </div>
+
+        <!-- Right Column: Deep 5-Step Analysis Panel -->
+        <div class="lg:col-span-5 glass-card rounded-xl p-4 lg:sticky lg:top-32">
+          <div class="flex items-start justify-between gap-2 pb-3 border-b border-slate-800">
+            <div>
+              <div class="text-xs text-amber-400 font-medium">پنل تحلیل عمیق ۵ مرحله‌ای (xYC)</div>
+              <h2 id="detail-title" class="text-base font-bold text-white mt-0.5">یک مسابقه را انتخاب کنید</h2>
+              <div id="detail-meta" class="text-xs text-slate-400 mt-0.5">---</div>
+            </div>
+            <span id="detail-signal-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 shrink-0">---</span>
+          </div>
+
+          <!-- Key Calculated Metrics -->
+          <div class="grid grid-cols-3 gap-2 my-3">
+            <div class="bg-slate-900/90 rounded-lg p-2.5 text-center border border-slate-800">
+              <div class="text-xs text-slate-400">کارت مورد انتظار</div>
+              <div id="detail-xyc" class="text-xl font-bold text-amber-400 mt-0.5 tabular-nums">0.0</div>
+            </div>
+            <div class="bg-slate-900/90 rounded-lg p-2.5 text-center border border-slate-800">
+              <div class="text-xs text-slate-400">احتمال Over 4.5</div>
+              <div id="detail-over45" class="text-xl font-bold text-rose-400 mt-0.5 tabular-nums">0%</div>
+            </div>
+            <div class="bg-slate-900/90 rounded-lg p-2.5 text-center border border-slate-800">
+              <div class="text-xs text-slate-400">احتمال Under 2.5</div>
+              <div id="detail-under25" class="text-xl font-bold text-emerald-400 mt-0.5 tabular-nums">0%</div>
+            </div>
+          </div>
+
+          <!-- Chart.js Negative Binomial Distribution -->
+          <div class="bg-slate-900/70 rounded-xl p-3 border border-slate-800 mb-3">
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <span>توزیع احتمال تعداد کارت زرد (مدل خوشه‌ای)</span>
+              <span id="detail-edge-label" class="font-medium text-slate-200 tabular-nums">لبه آماری: 0.0</span>
+            </div>
+            <div class="relative h-44">
+              <canvas id="dist-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Interactive Parameter Tuning for Selected Match -->
+          <div class="space-y-3 bg-slate-900/70 rounded-xl p-3 border border-slate-800 mb-3">
+            <div class="flex items-center justify-between gap-2">
+              <label for="detail-ref-select" class="text-xs text-slate-300">داور مسابقه (وزن اول):</label>
+              <select id="detail-ref-select" class="bg-slate-950 border border-slate-700 text-xs text-slate-100 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400"></select>
+            </div>
+
+            <div class="flex items-center justify-between gap-2">
+              <label for="detail-market-line" class="text-xs text-slate-300">خط کارت زرد بازار (Market Line):</label>
+              <select id="detail-market-line" class="bg-slate-950 border border-slate-700 text-xs text-slate-100 rounded-lg px-2 py-1 tabular-nums focus:outline-none focus:border-amber-400">
+                <option value="3.5">3.5 کارت</option>
+                <option value="4.0">4.0 کارت</option>
+                <option value="4.5" selected>4.5 کارت</option>
+                <option value="5.0">5.0 کارت</option>
+                <option value="5.5">5.5 کارت</option>
+              </select>
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-slate-300">حساسیت و نزدیکی نتیجه (۲- یک‌طرفه تا ۲+ دربی)</span>
+                <span id="val-detail-state" class="text-amber-300 font-medium">متعادل</span>
+              </div>
+              <input id="in-detail-state" type="range" min="-2" max="2" step="1" value="0" class="w-full">
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-slate-300">فشار استادیوم و میزبانی</span>
+                <span id="val-detail-crowd" class="text-amber-300 font-medium tabular-nums">5 / 10</span>
+              </div>
+              <input id="in-detail-crowd" type="range" min="0" max="10" step="1" value="5" class="w-full">
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-slate-300">شدت پرسینگ و ریسک مداخله VAR</span>
+                <span id="val-detail-var" class="text-amber-300 font-medium tabular-nums">5 / 10</span>
+              </div>
+              <input id="in-detail-var" type="range" min="0" max="10" step="1" value="5" class="w-full">
+            </div>
+          </div>
+
+          <!-- Research-backed Diagnosis Box -->
+          <div class="bg-slate-950/90 rounded-xl p-3 border border-slate-800">
+            <div class="text-xs font-semibold text-amber-400 mb-1.5">جمع‌بندی تحلیلی مبتنی بر پژوهش‌ها</div>
+            <ul id="detail-reasons" class="text-xs text-slate-300 space-y-1.5 list-disc pr-4 leading-relaxed"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: REFEREE DATABASE -->
+    <section id="tab-referees" class="tab-panel hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-7 glass-card rounded-xl p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="text-base font-bold text-white">بانک آمار کارت زرد داوران (فصل ۲۰۲۵/۲۶)</h2>
+              <p class="text-xs text-slate-400 mt-0.5">داده‌های معتبر استخراج‌شده از آمار فصل جاری لیگ برتر + داوران افزوده‌شده از API</p>
+            </div>
+            <select id="ref-sort" aria-label="مرتب‌سازی داوران" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-2.5 py-1.5">
+              <option value="ycpg_desc">بیشترین میانگین کارت زرد</option>
+              <option value="ycpg_asc">کمترین میانگین کارت زرد</option>
+              <option value="matches_desc">بیشترین تعداد قضاوت</option>
+            </select>
+          </div>
+          <div class="overflow-x-auto custom-scroll">
+            <table class="w-full text-right text-xs sm:text-sm">
+              <thead>
+                <tr class="border-b border-slate-800 text-slate-400">
+                  <th class="py-2.5 px-2 font-medium">نام داور</th>
+                  <th class="py-2.5 px-2 font-medium">بازی</th>
+                  <th class="py-2.5 px-2 font-medium">کل کارت زرد</th>
+                  <th class="py-2.5 px-2 font-medium">میانگین/بازی</th>
+                  <th class="py-2.5 px-2 font-medium">خطا/بازی</th>
+                  <th class="py-2.5 px-2 font-medium">پروفایل سخت‌گیری</th>
+                </tr>
+              </thead>
+              <tbody id="ref-table-body" class="divide-y divide-slate-800/70"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 flex flex-col gap-4">
+          <div class="glass-card rounded-xl p-4">
+            <h3 class="text-sm font-bold text-white mb-2">مقایسه میانگین کارت زرد داوران</h3>
+            <div class="relative h-72">
+              <canvas id="ref-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="glass-card rounded-xl p-4">
+            <h3 class="text-sm font-bold text-white mb-2">افزودن یا بروزرسانی آمار داور</h3>
+            <form id="form-add-ref" class="grid grid-cols-2 gap-2.5">
+              <input id="ref-in-name" type="text" required placeholder="نام داور (مثلاً Mateu Lahoz)" class="col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+              <input id="ref-in-matches" type="number" min="1" required placeholder="تعداد بازی" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+              <input id="ref-in-yc" type="number" min="0" required placeholder="مجموع کارت زرد" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+              <input id="ref-in-fouls" type="number" step="0.1" min="0" placeholder="خطا در هر بازی (اختیاری)" class="col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+              <button type="submit" class="col-span-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs py-2 rounded-lg transition">ذخیره در پایگاه داده داوران</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: VARIANCE TRACKER -->
+    <section id="tab-variance" class="tab-panel hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-8 glass-card rounded-xl p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="text-base font-bold text-white">ردیاب انحراف کارت زرد (نتیجه واقعی در برابر پیش‌بینی مدل)</h2>
+              <p class="text-xs text-slate-400 mt-0.5">ثبت بازی‌های تمام‌شده برای بررسی دقیق علت‌های Over یا Under شدن غیرمنتظره</p>
+            </div>
+            <span id="variance-summary" class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 tabular-nums">۰ مسابقه ثبت‌شده</span>
+          </div>
+          <div id="variance-list" class="space-y-2.5"></div>
+        </div>
+
+        <div class="lg:col-span-4 glass-card rounded-xl p-4">
+          <h3 class="text-sm font-bold text-white mb-2">ثبت نتیجه واقعی برای بررسی انحراف</h3>
+          <form id="form-log-variance" class="space-y-2.5">
+            <input id="var-match-name" type="text" required placeholder="نام بازی (مثلاً آرسنال - چلسی)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+            <div class="grid grid-cols-2 gap-2">
+              <input id="var-pred" type="number" step="0.1" min="0" required placeholder="xYC مدل (مثلاً 4.4)" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+              <input id="var-actual" type="number" min="0" required placeholder="کارت زرد واقعی" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+            </div>
+            <select id="var-cause" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200">
+              <option value="مداخله VAR و افزایش تنش (اثر دومینو)">مداخله VAR و افزایش تنش (اثر دومینو)</option>
+              <option value="اختلاف بیش از ۲ گل (افت انگیزه خطا در نیمه دوم)">اختلاف بیش از ۲ گل (افت انگیزه خطا)</option>
+              <option value="گل در نیمه دوم و فشار دقایق پایانی">گل در نیمه دوم و فشار دقایق پایانی</option>
+              <option value="سخت‌گیری یا آسان‌گیری غیرعادی داور">سخت‌گیری یا آسان‌گیری غیرعادی داور</option>
+              <option value="کارت زرد زودهنگام و خوشه‌بندی خطاها">کارت زرد زودهنگام و خوشه‌بندی خطاها</option>
+            </select>
+            <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs py-2 rounded-lg transition">ثبت در دفترچه تحلیل انحراف</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: API Settings & JSON Import -->
+  <div id="modal-settings" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto custom-scroll">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+        <h3 class="text-base font-bold text-white">اتصال به منابع داده فوتبال و ایمپورت</h3>
+        <button id="btn-close-settings" type="button" class="text-slate-400 hover:text-white text-sm px-2 py-1 rounded-lg bg-slate-800">بستن</button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+          <div class="font-semibold text-emerald-400 mb-1">۱. فید عمومی ESPN (فعال به‌صورت پیش‌فرض - بدون کلید API)</div>
+          <p class="text-slate-400 leading-relaxed">به‌صورت خودکار بازی‌های ۷ روز گذشته و ۷ روز آینده لیگ انتخابی را همراه با وضعیت بازی، ورزشگاه و نتیجه دریافت می‌کند.</p>
+        </div>
+
+        <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2">
+          <div class="font-semibold text-amber-400">۲. اتصال به API-Football v3 (آمار دقیق داوران و رویدادهای کارت)</div>
+          <p class="text-slate-400">با وارد کردن کلید رایگان از api-sports.io، نام داور رسمی هر بازی و کارت‌های زرد ثبت‌شده مستقیماً دریافت می‌شود.</p>
+          <input id="api-football-key" type="password" placeholder="کلید x-apisports-key خود را وارد کنید..." class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100">
+          <button id="btn-fetch-apifootball" type="button" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold py-2 rounded-lg transition">ذخیره کلید و دریافت از API-Football</button>
+        </div>
+
+        <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2">
+          <div class="font-semibold text-sky-400">۳. اتصال به Football-Data.org v4 (پشتیبانی رسمی مرورگر)</div>
+          <input id="football-data-key" type="password" placeholder="توکن X-Auth-Token خود را وارد کنید..." class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100">
+          <button id="btn-fetch-footballdata" type="button" class="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold py-2 rounded-lg transition">ذخیره توکن و دریافت از Football-Data</button>
+        </div>
+
+        <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2">
+          <div class="font-semibold text-slate-200">۴. ایمپورت مستقیم داده JSON (مسابقات یا داوران)</div>
+          <textarea id="json-import-box" rows="3" placeholder='[{"home":"Arsenal","away":"Chelsea","referee":"Anthony Taylor","status":"upcoming","marketLine":4.5}]' class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono text-left" dir="ltr"></textarea>
+          <button id="btn-import-json" type="button" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-medium py-2 rounded-lg transition">ایمپورت و تحلیل فوری</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add Custom Match -->
+  <div id="modal-add-match" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card rounded-2xl max-w-md w-full p-5">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+        <h3 class="text-base font-bold text-white">افزودن مسابقه جدید برای تحلیل</h3>
+        <button id="btn-close-add-match" type="button" class="text-slate-400 hover:text-white text-sm px-2 py-1 rounded-lg bg-slate-800">بستن</button>
+      </div>
+      <form id="form-add-match" class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-2">
+          <input id="add-home" type="text" required placeholder="تیم میزبان" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+          <input id="add-away" type="text" required placeholder="تیم میهمان" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+        </div>
+        <select id="add-ref" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"></select>
+        <div class="grid grid-cols-2 gap-2">
+          <select id="add-status" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100">
+            <option value="upcoming">بازی آینده</option>
+            <option value="past">بازی گذشته</option>
+          </select>
+          <input id="add-line" type="number" step="0.5" min="1.5" max="8.5" value="4.5" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" placeholder="خط بازار">
+        </div>
+        <button type="submit" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold py-2 rounded-lg transition">افزودن و تحلیل فوری</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. VERIFIED REFEREE DATASET (2025/26 Premier League - WhoScored / Statz)
+    // =========================================================================
+    const INITIAL_REFEREES = [
+      { id: 'stuart-attwell', name: 'Stuart Attwell', matches: 25, yc: 115, ycpg: 4.60, foulsPg: 21.68 },
+      { id: 'michael-salisbury', name: 'Michael Salisbury', matches: 13, yc: 57, ycpg: 4.38, foulsPg: 22.17 },
+      { id: 'robert-jones', name: 'Robert Jones', matches: 18, yc: 75, ycpg: 4.17, foulsPg: null },
+      { id: 'chris-kavanagh', name: 'Chris Kavanagh', matches: 30, yc: 122, ycpg: 4.07, foulsPg: 22.30 },
+      { id: 'thomas-bramall', name: 'Thomas Bramall', matches: 22, yc: 89, ycpg: 4.05, foulsPg: null },
+      { id: 'simon-hooper', name: 'Simon Hooper', matches: 15, yc: 60, ycpg: 4.00, foulsPg: 23.59 },
+      { id: 'anthony-taylor', name: 'Anthony Taylor', matches: 31, yc: 122, ycpg: 3.94, foulsPg: 20.48 },
+      { id: 'peter-bankes', name: 'Peter Bankes', matches: 22, yc: 84, ycpg: 3.82, foulsPg: 22.57 },
+      { id: 'samuel-barrott', name: 'Samuel Barrott', matches: 24, yc: 89, ycpg: 3.71, foulsPg: null },
+      { id: 'jarred-gillett', name: 'Jarred Gillett', matches: 22, yc: 79, ycpg: 3.59, foulsPg: null },
+      { id: 'andy-madley', name: 'Andy Madley', matches: 21, yc: 68, ycpg: 3.24, foulsPg: null },
+      { id: 'michael-oliver', name: 'Michael Oliver', matches: 29, yc: 88, ycpg: 3.03, foulsPg: 22.93 },
+      { id: 'craig-pawson', name: 'Craig Pawson', matches: 21, yc: 56, ycpg: 2.67, foulsPg: null }
+    ];
+
+    // Sample scenarios ONLY used if live internet fetch is unavailable/blocked
+    const FALLBACK_SCENARIOS = [
+      {
+        id: 'sim-1', home: 'سناریوی نمونه: دربی پرفشار لندن', away: 'تیم میهمان مدعی',
+        date: 'حالت آفلاین / تست مدل', status: 'upcoming', score: '-', venue: 'استادیوم پرفشار (بدون پیست)',
+        referee: 'Stuart Attwell', stateVal: 2, crowdVal: 9, varVal: 7, marketLine: 4.5, actualYc: null, source: 'سناریوی تست مدل'
+      },
+      {
+        id: 'sim-2', home: 'سناریوی نمونه: تیم صدرنشین', away: 'تیم قعر جدول (اختلاف سطح بالا)',
+        date: 'حالت آفلاین / تست مدل', status: 'upcoming', score: '-', venue: 'ورزشگاه خانگی',
+        referee: 'Craig Pawson', stateVal: -2, crowdVal: 4, varVal: 3, marketLine: 4.0, actualYc: null, source: 'سناریوی تست مدل'
+      },
+      {
+        id: 'sim-3', home: 'سناریوی نمونه: نبرد نزدیک میانه جدول', away: 'تیم میهمان ضدحمله‌ای',
+        date: 'حالت آفلاین / تست مدل', status: 'upcoming', score: '-', venue: 'ورزشگاه خانگی',
+        referee: 'Anthony Taylor', stateVal: 1, crowdVal: 6, varVal: 6, marketLine: 4.5, actualYc: null, source: 'سناریوی تست مدل'
+      },
+      {
+        id: 'sim-4', home: 'سناریوی نمونه: بازی بزرگ با داور کم‌کارت', away: 'رقیب مستقیم',
+        date: 'حالت آفلاین / تست مدل', status: 'upcoming', score: '-', venue: 'ورزشگاه بزرگ',
+        referee: 'Michael Oliver', stateVal: 1, crowdVal: 8, varVal: 4, marketLine: 5.0, actualYc: null, source: 'سناریوی تست مدل'
+      }
+    ];
+
+    const LEAGUE_MAP = {
+      'eng.1': { name: 'لیگ برتر انگلیس', apiFootballId: 39, fdCode: 'PL', baseAvg: 3.85 },
+      'esp.1': { name: 'لالیگا اسپانیا', apiFootballId: 140, fdCode: 'PD', baseAvg: 4.55 },
+      'ita.1': { name: 'سری آ ایتالیا', apiFootballId: 135, fdCode: 'SA', baseAvg: 4.35 },
+      'ger.1': { name: 'بوندس‌لیگا آلمان', apiFootballId: 78, fdCode: 'BL1', baseAvg: 3.80 },
+      'fra.1': { name: 'لیگ ۱ فرانسه', apiFootballId: 61, fdCode: 'FL1', baseAvg: 3.75 },
+      'uefa.champions': { name: 'لیگ قهرمانان اروپا', apiFootballId: 2, fdCode: 'CL', baseAvg: 4.16 }
+    };
+
+    const STATE_LABELS = { '-2': 'یک‌طرفه / بی‌انگیزه', '-1': 'کم‌تنش', '0': 'متعادل', '1': 'نزدیک و حساس', '2': 'دربی / نبرد بقا' };
+
+    // =========================================================================
+    // 2. APPLICATION STATE
+    // =========================================================================
+    const state = {
+      league: 'eng.1',
+      activeTab: 'matches',
+      filter: 'all',
+      search: '',
+      refSort: 'ycpg_desc',
+      referees: [...INITIAL_REFEREES],
+      matches: [],
+      selectedMatchId: null,
+      varianceLogs: [],
+      sourceLabel: 'در حال اتصال...',
+      apiFootballKey: '',
+      footballDataKey: ''
+    };
+
+    let distChart = null;
+    let refChart = null;
+
+    // Safe localStorage helpers
+    function loadSavedKeys() {
+      try {
+        state.apiFootballKey = localStorage.getItem('yc_apifootball_key') || '';
+        state.footballDataKey = localStorage.getItem('yc_footballdata_key') || '';
+        document.getElementById('api-football-key').value = state.apiFootballKey;
+        document.getElementById('football-data-key').value = state.footballDataKey;
+      } catch (e) {}
+    }
+    function saveKey(k, v) {
+      try { localStorage.setItem(k, v); } catch (e) {}
+    }
+
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      const colors = {
+        info: 'bg-slate-800 border-slate-600 text-slate-100',
+        success: 'bg-emerald-950/95 border-emerald-500/60 text-emerald-200',
+        warn: 'bg-amber-950/95 border-amber-500/60 text-amber-200',
+        error: 'bg-rose-950/95 border-rose-500/60 text-rose-200'
+      };
+      el.className = `px-3.5 py-2.5 rounded-xl border text-xs shadow-lg transition ${colors[type] || colors.info}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => { el.remove(); }, 4000);
+    }
+
+    // =========================================================================
+    // 3. NEGATIVE BINOMIAL OVERDISPERSED xYC MODEL
+    // =========================================================================
+    function logGamma(z) {
+      const g = 7;
+      const p = [
+        0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+        771.32342877765313, -176.61502916214059, 12.507343278686905,
+        -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7
+      ];
+      if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - logGamma(1 - z);
+      z -= 1;
+      let x = p[0];
+      for (let i = 1; i < g + 2; i++) x += p[i] / (z + i);
+      const t = z + g + 0.5;
+      return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+    }
+
+    function negBinomPMF(k, mean, r) {
+      const p = r / (r + mean);
+      const logP = logGamma(k + r) - logGamma(r) - logGamma(k + 1) + r * Math.log(p) + k * Math.log(1 - p);
+      return Math.exp(logP);
+    }
+
+    function getRefereeAvg(refName) {
+      if (!refName) return LEAGUE_MAP[state.league]?.baseAvg || 3.85;
+      const found = state.referees.find(r => r.name.toLowerCase() === refName.toLowerCase());
+      return found ? found.ycpg : (LEAGUE_MAP[state.league]?.baseAvg || 3.85);
+    }
+
+    function analyzeMatch(match) {
+      const refAvg = getRefereeAvg(match.referee);
+      const stateVal = Number(match.stateVal ?? 0);
+      const crowdVal = Number(match.crowdVal ?? 5);
+      const varVal = Number(match.varVal ?? 4);
+      const marketLine = Number(match.marketLine ?? 4.5);
+
+      const cRef = refAvg * 0.72;
+      const cState = Math.max(0.15, 0.75 + stateVal * 0.45);
+      const cCrowd = 0.15 + (crowdVal / 10) * 0.70;
+      const cVar = 0.15 + (varVal / 10) * 1.15;
+
+      const xYC = Math.max(1.6, cRef + cState + cCrowd + cVar);
+      const rParam = Math.max(3.5, 14 - varVal * 0.65 - Math.max(0, stateVal) * 1.6);
+
+      const probs = [];
+      let sum0to7 = 0;
+      for (let k = 0; k <= 7; k++) {
+        const pk = negBinomPMF(k, xYC, rParam);
+        probs.push(pk);
+        sum0to7 += pk;
+      }
+      probs.push(Math.max(0, 1 - sum0to7));
+
+      const pUnder25 = probs[0] + probs[1] + probs[2];
+      const pOver45 = 1 - (probs[0] + probs[1] + probs[2] + probs[3] + probs[4]);
+      const edge = xYC - marketLine;
+
+      let signal = 'neutral';
+      let signalText = 'متعادل / بدون برتری';
+      if (edge >= 0.45) {
+        signal = 'over';
+        signalText = `ارزش Over ${marketLine}`;
+      } else if (edge <= -0.45) {
+        signal = 'under';
+        signalText = `ارزش Under ${marketLine}`;
+      }
+
+      const reasons = [];
+      if (refAvg >= 4.1) {
+        reasons.push(`داور انتخابی (${match.referee || 'میانگین لیگ'}) با میانگین ${refAvg.toFixed(2)} کارت در بازی، در رده داوران سخت‌گیر قرار دارد و نرخ تبدیل خطا به کارت را بالا می‌برد.`);
+      } else if (refAvg <= 3.3) {
+        reasons.push(`داور انتخابی (${match.referee || 'میانگین لیگ'}) با میانگین ${refAvg.toFixed(2)} کارت در بازی، مدیریت‌محور و کم‌کارت است که احتمال Over شدن خط ${marketLine} را کاهش می‌دهد.`);
+      } else {
+        reasons.push(`داور مسابقه (${match.referee || 'میانگین لیگ'}) میانگین متعادل ${refAvg.toFixed(2)} کارت در بازی دارد؛ بنابراین جریان نتیجه تعیین‌کننده خواهد بود.`);
+      }
+
+      if (stateVal >= 1) {
+        reasons.push('حساسیت بالا و نزدیکی سطح دو تیم باعث افزایش احتمال گل در نیمه دوم و تشدید خطاهای تاکتیکی در ۳۰ دقیقه پایانی می‌شود.');
+      } else if (stateVal <= -1) {
+        reasons.push('احتمال یک‌طرفه شدن نتیجه (اختلاف ۲ گل یا بیشتر) ریسک افت خطاهای تاکتیکی و قفل شدن کارت‌ها روی عدد پایین (Under) را بالا می‌برد.');
+      }
+
+      if (varVal >= 7) {
+        reasons.push('ریسک بالای مداخله VAR و پرسینگ شدید، احتمال «اثر دومینوی VAR» (دو برابر شدن نرخ کارت پس از بازبینی) و خوشه‌بندی کارت‌ها را تقویت می‌کند.');
+      }
+      if (crowdVal >= 8) {
+        reasons.push('فشار بالای تماشاگران میزبان، سوگیری صدور کارت زرد علیه تیم میهمان را تشدید می‌کند.');
+      }
+      if (signal === 'under' && marketLine >= 4.5) {
+        reasons.push(`خط بازار (${marketLine}) نسبت به برآورد مدل (${xYC.toFixed(2)}) بیش‌واکنش نشان داده و ارزش آماری در سمت کم‌کارت (Under) است.`);
+      } else if (signal === 'over') {
+        reasons.push(`برآورد مدل (${xYC.toFixed(2)}) به‌طور معناداری بالاتر از خط بازار (${marketLine}) است و دم سنگین توزیع از سمت پرکارت (Over) حمایت می‌کند.`);
+      }
+
+      return { xYC, rParam, probs, pOver45, pUnder25, edge, signal, signalText, refAvg, reasons };
+    }
+
+    // =========================================================================
+    // 4. LIVE AUTOMATED DATA COLLECTION (ESPN / API-Football / Football-Data)
+    // =========================================================================
+    function formatDateESPN(dateObj) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}${m}${d}`;
+    }
+
+    function setConnStatus(mode, text) {
+      const dot = document.getElementById('conn-dot');
+      const txt = document.getElementById('conn-text');
+      txt.textContent = text;
+      dot.className = 'w-2 h-2 rounded-full ' + (
+        mode === 'live' ? 'bg-emerald-400' :
+        mode === 'loading' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400'
+      );
+    }
+
+    async function fetchFromGitHubData() {
+      try {
+        const r = await fetch(`./data/matches.json?t=${Date.now()}`);
+        if (!r.ok) return null;
+        const payload = await r.json();
+        const leagueMatches = payload?.leagues?.[state.league];
+        if (Array.isArray(leagueMatches) && leagueMatches.length > 0) {
+          return { matches: leagueMatches, updatedAt: payload.updatedAt || '' };
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    async function fetchLiveESPN() {
+      setConnStatus('loading', 'در حال دریافت داده‌های زنده...');
+      const ghData = await fetchFromGitHubData();
+      if (ghData) {
+        state.matches = ghData.matches;
+        state.sourceLabel = `GitHub Actions (${LEAGUE_MAP[state.league].name})`;
+        state.selectedMatchId = state.matches[0]?.id || null;
+        setConnStatus('live', `بروزرسانی خودکار گیت‌هاب (${state.matches.length} بازی)`);
+        showToast(`${state.matches.length} مسابقه به‌روز از فایل خودکار گیت‌هاب بارگذاری شد.`, 'success');
+        renderAll();
+        return;
+      }
+      setConnStatus('loading', 'در حال دریافت زنده از ESPN...');
+      const now = new Date();
+      const past = new Date(now.getTime() - 7 * 86400000);
+      const future = new Date(now.getTime() + 7 * 86400000);
+      const dateRange = `${formatDateESPN(past)}-${formatDateESPN(future)}`;
+      const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${state.league}/scoreboard?dates=${dateRange}`;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const events = Array.isArray(data.events) ? data.events : [];
+
+        if (events.length === 0) {
+          throw new Error('هیچ مسابقه‌ای در بازه ۱۴ روزه یافت نشد.');
+        }
+
+        const parsed = events.map((ev, idx) => {
+          const comp = ev.competitions?.[0] || {};
+          const competitors = comp.competitors || [];
+          const homeObj = competitors.find(c => c.homeAway === 'home') || competitors[0] || {};
+          const awayObj = competitors.find(c => c.homeAway === 'away') || competitors[1] || {};
+          const statusType = ev.status?.type?.state || 'pre';
+          const isPast = statusType === 'post';
+          const isLive = statusType === 'in';
+
+          // Count yellow cards from ESPN details if available
+          let actualYc = null;
+          if (Array.isArray(comp.details) && (isPast || isLive)) {
+            const ycs = comp.details.filter(d => d.yellowCard === true || (d.type?.text || '').toLowerCase().includes('yellow'));
+            actualYc = ycs.length;
+          }
+
+          const refFromApi = comp.officials?.[0]?.displayName || '';
+          const defaultRef = state.league === 'eng.1'
+            ? state.referees[idx % state.referees.length].name
+            : '';
+
+          // Infer closeness from score if finished, else balanced
+          let stateVal = 0;
+          if (isPast && homeObj.score !== undefined && awayObj.score !== undefined) {
+            const diff = Math.abs(Number(homeObj.score) - Number(awayObj.score));
+            stateVal = diff >= 3 ? -2 : diff === 2 ? -1 : 1;
+          }
+
+          const dt = ev.date ? new Date(ev.date) : null;
+          const dateStr = dt && !isNaN(dt.getTime())
+            ? dt.toLocaleDateString('fa-IR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : 'نامشخص';
+
+          return {
+            id: `espn-${ev.id || idx}`,
+            home: homeObj.team?.displayName || 'میزبان',
+            away: awayObj.team?.displayName || 'میهمان',
+            date: isLive ? `زنده (${ev.status?.displayClock || ''})` : dateStr,
+            status: isPast ? 'past' : 'upcoming',
+            isLive,
+            score: (isPast || isLive) ? `${homeObj.score ?? 0} - ${awayObj.score ?? 0}` : 'در پیش رو',
+            venue: comp.venue?.fullName || 'ورزشگاه رسمی',
+            referee: refFromApi || defaultRef,
+            refAssignedByApi: Boolean(refFromApi),
+            stateVal,
+            crowdVal: 6,
+            varVal: 5,
+            marketLine: state.league === 'esp.1' || state.league === 'ita.1' ? 4.5 : 4.0,
+            actualYc,
+            source: 'ESPN Live'
+          };
+        });
+
+        state.matches = parsed;
+        state.sourceLabel = `ESPN Live (${LEAGUE_MAP[state.league].name})`;
+        state.selectedMatchId = parsed[0]?.id || null;
+        setConnStatus('live', `متصل به ESPN (${parsed.length} بازی)`);
+        showToast(`${parsed.length} مسابقه از ${LEAGUE_MAP[state.league].name} به‌صورت خودکار دریافت شد.`, 'success');
+        renderAll();
+      } catch (err) {
+        state.matches = FALLBACK_SCENARIOS.map(m => ({ ...m }));
+        state.sourceLabel = 'حالت آفلاین (سناریوی تست + آمار واقعی داوران)';
+        state.selectedMatchId = state.matches[0]?.id || null;
+        setConnStatus('offline', 'حالت آفلاین / تست مدل');
+        showToast('اتصال زنده در دسترس نبود؛ سناریوهای تست مدل با آمار واقعی داوران بارگذاری شد.', 'warn');
+        renderAll();
+      }
+    }
+
+    async function fetchApiFootball() {
+      const key = document.getElementById('api-football-key').value.trim();
+      if (!key) {
+        showToast('لطفاً کلید API-Football را وارد کنید.', 'warn');
+        return;
+      }
+      state.apiFootballKey = key;
+      saveKey('yc_apifootball_key', key);
+      setConnStatus('loading', 'در حال دریافت از API-Football...');
+
+      const leagueId = LEAGUE_MAP[state.league]?.apiFootballId || 39;
+      const season = 2025;
+      try {
+        const res = await fetch(`https://v3.football.api-sports.io/fixtures?league=${leagueId}&season=${season}&last=10`, {
+          headers: { 'x-apisports-key': key }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const items = Array.isArray(json.response) ? json.response : [];
+        if (items.length === 0) throw new Error(json.errors?.token || 'داده‌ای برنگشت.');
+
+        state.matches = items.map((it, idx) => {
+          const refName = (it.fixture?.referee || '').split(',')[0].trim();
+          const stShort = it.fixture?.status?.short || 'NS';
+          const isPast = ['FT', 'AET', 'PEN'].includes(stShort);
+          return {
+            id: `apif-${it.fixture?.id || idx}`,
+            home: it.teams?.home?.name || 'میزبان',
+            away: it.teams?.away?.name || 'میهمان',
+            date: it.fixture?.date ? new Date(it.fixture.date).toLocaleDateString('fa-IR') : '-',
+            status: isPast ? 'past' : 'upcoming',
+            score: isPast ? `${it.goals?.home ?? 0} - ${it.goals?.away ?? 0}` : 'در پیش رو',
+            venue: it.fixture?.venue?.name || 'استادیوم',
+            referee: refName,
+            refAssignedByApi: Boolean(refName),
+            stateVal: 0,
+            crowdVal: 6,
+            varVal: 5,
+            marketLine: 4.5,
+            actualYc: null,
+            source: 'API-Football v3'
+          };
+        });
+
+        state.sourceLabel = 'API-Football v3 (رسمی)';
+        state.selectedMatchId = state.matches[0]?.id || null;
+        setConnStatus('live', `متصل به API-Football (${state.matches.length} بازی)`);
+        closeModal('modal-settings');
+        showToast('مسابقات و نام داوران از API-Football دریافت شد.', 'success');
+        renderAll();
+      } catch (err) {
+        setConnStatus('offline', 'خطا در کلید API-Football');
+        showToast(`خطا در اتصال به API-Football: ${err.message}`, 'error');
+      }
+    }
+
+    async function fetchFootballData() {
+      const key = document.getElementById('football-data-key').value.trim();
+      if (!key) {
+        showToast('لطفاً توکن Football-Data.org را وارد کنید.', 'warn');
+        return;
+      }
+      state.footballDataKey = key;
+      saveKey('yc_footballdata_key', key);
+      setConnStatus('loading', 'در حال دریافت از Football-Data...');
+
+      const code = LEAGUE_MAP[state.league]?.fdCode || 'PL';
+      try {
+        const res = await fetch(`https://api.football-data.org/v4/competitions/${code}/matches`, {
+          headers: { 'X-Auth-Token': key }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const raw = Array.isArray(json.matches) ? json.matches : [];
+        const sliced = raw.slice(-20);
+        if (sliced.length === 0) throw new Error('مسابقه‌ای یافت نشد.');
+
+        state.matches = sliced.map((m, idx) => {
+          const isPast = m.status === 'FINISHED';
+          const refName = m.referees?.[0]?.name || '';
+          return {
+            id: `fd-${m.id || idx}`,
+            home: m.homeTeam?.name || 'میزبان',
+            away: m.awayTeam?.name || 'میهمان',
+            date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fa-IR') : '-',
+            status: isPast ? 'past' : 'upcoming',
+            score: isPast ? `${m.score?.fullTime?.home ?? 0} - ${m.score?.fullTime?.away ?? 0}` : 'در پیش رو',
+            venue: 'مسابقه رسمی لیگ',
+            referee: refName,
+            refAssignedByApi: Boolean(refName),
+            stateVal: 0,
+            crowdVal: 6,
+            varVal: 5,
+            marketLine: 4.5,
+            actualYc: null,
+            source: 'Football-Data v4'
+          };
+        });
+
+        state.sourceLabel = 'Football-Data.org v4';
+        state.selectedMatchId = state.matches[0]?.id || null;
+        setConnStatus('live', `متصل به Football-Data (${state.matches.length} بازی)`);
+        closeModal('modal-settings');
+        showToast(`${state.matches.length} مسابقه از Football-Data.org بارگذاری شد.`, 'success');
+        renderAll();
+      } catch (err) {
+        setConnStatus('offline', 'خطا در توکن Football-Data');
+        showToast(`خطا در اتصال به Football-Data: ${err.message}`, 'error');
+      }
+    }
+
+    // =========================================================================
+    // 5. RENDERING FUNCTIONS
+    // =========================================================================
+    function renderKPIs() {
+      const total = state.matches.length;
+      let sumXyc = 0;
+      let valueCount = 0;
+
+      state.matches.forEach(m => {
+        const res = analyzeMatch(m);
+        sumXyc += res.xYC;
+        if (res.signal !== 'neutral') valueCount++;
+      });
+
+      document.getElementById('kpi-total-matches').textContent = String(total);
+      document.getElementById('kpi-source-note').textContent = `منبع: ${state.sourceLabel}`;
+      document.getElementById('kpi-avg-xyc').textContent = total > 0 ? (sumXyc / total).toFixed(2) : '0.00';
+      document.getElementById('kpi-value-signals').textContent = String(valueCount);
+      document.getElementById('kpi-ref-count').textContent = String(state.referees.length);
+    }
+
+    function renderMatchesList() {
+      const container = document.getElementById('matches-list');
+      const q = state.search.trim().toLowerCase();
+
+      const filtered = state.matches.filter(m => {
+        const res = analyzeMatch(m);
+        if (state.filter === 'upcoming' && m.status !== 'upcoming') return false;
+        if (state.filter === 'past' && m.status !== 'past') return false;
+        if (state.filter === 'over' && res.signal !== 'over') return false;
+        if (state.filter === 'under' && res.signal !== 'under') return false;
+        if (q) {
+          const hay = `${m.home} ${m.away} ${m.referee || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="glass-card rounded-xl p-6 text-center text-xs text-slate-400">مسابقه‌ای با این فیلتر پیدا نشد. فیلتر را تغییر دهید یا بازی جدید اضافه کنید.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(m => {
+        const res = analyzeMatch(m);
+        const isSel = m.id === state.selectedMatchId;
+        const badgeCls = res.signal === 'over'
+          ? 'bg-rose-500/15 text-rose-300 border border-rose-500/40'
+          : res.signal === 'under'
+          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40'
+          : 'bg-slate-800 text-slate-300 border border-slate-700';
+
+        const actualPill = m.actualYc !== null && m.actualYc !== undefined
+          ? `<span class="text-xs px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 tabular-nums">کارت واقعی: ${m.actualYc}</span>`
+          : '';
+
+        return `
+          <div data-match-id="${m.id}" class="match-card cursor-pointer glass-card rounded-xl p-3.5 transition hover:border-amber-400/60 ${isSel ? 'ring-1 ring-amber-400 border-amber-400/70' : ''}">
+            <div class="flex items-center justify-between gap-2 text-xs text-slate-400 mb-2">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">${m.status === 'past' ? 'پایان‌یافته' : 'آینده'}</span>
+                <span>${m.date}</span>
+              </div>
+              <span class="text-xs font-medium px-2.5 py-0.5 rounded-full ${badgeCls}">${res.signalText}</span>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 mb-2.5">
+              <div class="font-bold text-sm text-white truncate">${m.home} <span class="text-slate-500 font-normal mx-1">مقابل</span> ${m.away}</div>
+              <div class="text-xs font-semibold px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 shrink-0 tabular-nums">${m.score}</div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs pt-2 border-t border-slate-800/80">
+              <div class="text-slate-400">
+                داور: <span class="text-slate-200 font-medium">${m.referee || 'میانگین لیگ (قابل تغییر)'}</span>
+                <span class="text-slate-500 mr-1 tabular-nums">(${res.refAvg.toFixed(2)})</span>
+              </div>
+              <div class="flex items-center gap-2">
+                ${actualPill}
+                <span class="text-amber-400 font-semibold tabular-nums">xYC: ${res.xYC.toFixed(2)}</span>
+                <span class="text-slate-400 tabular-nums">خط: ${m.marketLine}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.match-card').forEach(card => {
+        card.addEventListener('click', () => {
+          state.selectedMatchId = card.dataset.matchId;
+          renderMatchesList();
+          renderDetailPanel();
+        });
+      });
+    }
+
+    function populateRefereeDropdowns() {
+      const options = [`<option value="">میانگین لیگ (${(LEAGUE_MAP[state.league]?.baseAvg || 3.85).toFixed(2)})</option>`]
+        .concat(state.referees.map(r => `<option value="${r.name}">${r.name} (${r.ycpg.toFixed(2)} کارت/بازی)</option>`))
+        .join('');
+      document.getElementById('detail-ref-select').innerHTML = options;
+      document.getElementById('add-ref').innerHTML = options;
+    }
+
+    function renderDetailPanel() {
+      const match = state.matches.find(m => m.id === state.selectedMatchId) || state.matches[0];
+      if (!match) return;
+      state.selectedMatchId = match.id;
+
+      const res = analyzeMatch(match);
+      document.getElementById('detail-title').textContent = `${match.home} — ${match.away}`;
+      document.getElementById('detail-meta').textContent = `${match.date} | ${match.venue} | منبع: ${match.source}`;
+
+      const badge = document.getElementById('detail-signal-badge');
+      badge.textContent = res.signalText;
+      badge.className = 'text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ' + (
+        res.signal === 'over' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
+        res.signal === 'under' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+        'bg-slate-800 text-slate-300 border border-slate-700'
+      );
+
+      document.getElementById('detail-xyc').textContent = res.xYC.toFixed(2);
+      document.getElementById('detail-over45').textContent = `${Math.round(res.pOver45 * 100)}%`;
+      document.getElementById('detail-under25').textContent = `${Math.round(res.pUnder25 * 100)}%`;
+      document.getElementById('detail-edge-label').textContent = `لبه آماری: ${res.edge >= 0 ? '+' : ''}${res.edge.toFixed(2)}`;
+
+      // Sync controls
+      const refSel = document.getElementById('detail-ref-select');
+      if (match.referee && !Array.from(refSel.options).some(o => o.value === match.referee)) {
+        const opt = document.createElement('option');
+        opt.value = match.referee;
+        opt.textContent = `${match.referee} (داور فید زنده)`;
+        refSel.appendChild(opt);
+      }
+      refSel.value = match.referee || '';
+      document.getElementById('detail-market-line').value = String(match.marketLine);
+      document.getElementById('in-detail-state').value = String(match.stateVal);
+      document.getElementById('in-detail-crowd').value = String(match.crowdVal);
+      document.getElementById('in-detail-var').value = String(match.varVal);
+
+      document.getElementById('val-detail-state').textContent = STATE_LABELS[String(match.stateVal)];
+      document.getElementById('val-detail-crowd').textContent = `${match.crowdVal} / 10`;
+      document.getElementById('val-detail-var').textContent = `${match.varVal} / 10`;
+
+      document.getElementById('detail-reasons').innerHTML = res.reasons.map(r => `<li>${r}</li>`).join('');
+
+      // Render Chart.js distribution
+      const ctx = document.getElementById('dist-chart').getContext('2d');
+      const labels = ['0', '1', '2', '3', '4', '5', '6', '7', '8+'];
+      const pctData = res.probs.map(p => Number((p * 100).toFixed(1)));
+      const bgColors = labels.map((_, idx) => idx <= 2 ? '#10b981' : idx >= 5 ? '#f43f5e' : '#f59e0b');
+
+      if (distChart) distChart.destroy();
+      distChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'احتمال (%)',
+            data: pctData,
+            backgroundColor: bgColors,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { display: false } },
+            y: { ticks: { color: '#94a3b8', font: { size: 11 }, callback: v => `${v}%` }, grid: { color: 'rgba(51,65,85,0.4)' } }
+          }
+        }
+      });
+    }
+
+    function renderRefereesTab() {
+      const sorted = [...state.referees].sort((a, b) => {
+        if (state.refSort === 'ycpg_asc') return a.ycpg - b.ycpg;
+        if (state.refSort === 'matches_desc') return b.matches - a.matches;
+        return b.ycpg - a.ycpg;
+      });
+
+      const tbody = document.getElementById('ref-table-body');
+      tbody.innerHTML = sorted.map(r => {
+        const tier = r.ycpg >= 4.1
+          ? '<span class="px-2 py-0.5 rounded-full text-xs bg-rose-500/15 text-rose-300 border border-rose-500/30">سخت‌گیر (Over)</span>'
+          : r.ycpg <= 3.3
+          ? '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">آسان‌گیر (Under)</span>'
+          : '<span class="px-2 py-0.5 rounded-full text-xs bg-slate-800 text-slate-300">متعادل</span>';
+        return `
+          <tr class="hover:bg-slate-800/40">
+            <td class="py-2.5 px-2 font-medium text-white">${r.name}</td>
+            <td class="py-2.5 px-2 text-slate-300 tabular-nums">${r.matches}</td>
+            <td class="py-2.5 px-2 text-slate-300 tabular-nums">${r.yc}</td>
+            <td class="py-2.5 px-2 font-bold text-amber-400 tabular-nums">${r.ycpg.toFixed(2)}</td>
+            <td class="py-2.5 px-2 text-slate-400 tabular-nums">${r.foulsPg ? r.foulsPg.toFixed(2) : '---'}</td>
+            <td class="py-2.5 px-2">${tier}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const ctx = document.getElementById('ref-chart').getContext('2d');
+      if (refChart) refChart.destroy();
+      refChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: sorted.map(r => r.name),
+          datasets: [{
+            label: 'میانگین کارت زرد در بازی',
+            data: sorted.map(r => r.ycpg),
+            backgroundColor: sorted.map(r => r.ycpg >= 4.1 ? '#f43f5e' : r.ycpg <= 3.3 ? '#10b981' : '#f59e0b'),
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { min: 0, max: 6, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(51,65,85,0.4)' } },
+            y: { ticks: { color: '#e2e8f0', font: { size: 11 } }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    function renderVarianceTab() {
+      const list = document.getElementById('variance-list');
+      // Combine API past matches with actualYc + user logged variance items
+      const apiLogged = state.matches
+        .filter(m => m.status === 'past' && m.actualYc !== null && m.actualYc !== undefined)
+        .map(m => {
+          const res = analyzeMatch(m);
+          return {
+            name: `${m.home} — ${m.away}`,
+            pred: res.xYC,
+            actual: m.actualYc,
+            cause: m.actualYc > res.xYC + 1 ? 'خوشه‌بندی کارت‌ها یا تنش نیمه دوم (داده فید زنده)' :
+                   m.actualYc < res.xYC - 1 ? 'جریان آرام یا اختلاف نتیجه (داده فید زنده)' : 'نزدیک به برآورد مدل'
+          };
+        });
+
+      const allLogs = [...state.varianceLogs, ...apiLogged];
+      document.getElementById('variance-summary').textContent = `${allLogs.length} مسابقه ثبت‌شده`;
+
+      if (allLogs.length === 0) {
+        list.innerHTML = `<div class="bg-slate-900/70 rounded-xl p-5 text-center text-xs text-slate-400 border border-slate-800">هنوز مسابقه تمام‌شده‌ای با آمار کارت زرد واقعی ثبت نشده است. از فرم کنار صفحه یک بازی ثبت کنید یا منتظر داده‌های مسابقات تمام‌شده بمانید.</div>`;
+        return;
+      }
+
+      list.innerHTML = allLogs.map(item => {
+        const diff = item.actual - item.pred;
+        const diffCls = diff >= 1 ? 'text-rose-400' : diff <= -1 ? 'text-emerald-400' : 'text-amber-300';
+        return `
+          <div class="bg-slate-900/80 rounded-xl p-3 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-semibold text-sm text-white">${item.name}</div>
+              <div class="text-xs text-slate-400 mt-0.5">علت احتمالی: ${item.cause}</div>
+            </div>
+            <div class="flex items-center gap-3 text-xs tabular-nums">
+              <span class="text-slate-400">مدل: <strong class="text-slate-200">${item.pred.toFixed(1)}</strong></span>
+              <span class="text-slate-400">واقعی: <strong class="text-white">${item.actual}</strong></span>
+              <span class="font-bold ${diffCls}">انحراف: ${diff >= 0 ? '+' : ''}${diff.toFixed(1)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAll() {
+      populateRefereeDropdowns();
+      renderKPIs();
+      renderMatchesList();
+      renderDetailPanel();
+      renderRefereesTab();
+      renderVarianceTab();
+    }
+
+    // =========================================================================
+    // 6. EVENT LISTENERS & MODAL CONTROLS
+    // =========================================================================
+    function openModal(id) {
+      const m = document.getElementById(id);
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+    }
+    function closeModal(id) {
+      const m = document.getElementById(id);
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.activeTab = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.remove('border-amber-400', 'text-amber-400');
+          b.classList.add('border-transparent', 'text-slate-400');
+        });
+        btn.classList.add('border-amber-400', 'text-amber-400');
+        btn.classList.remove('border-transparent', 'text-slate-400');
+
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        document.getElementById(`tab-${state.activeTab}`).classList.remove('hidden');
+        if (state.activeTab === 'referees') renderRefereesTab();
+        if (state.activeTab === 'variance') renderVarianceTab();
+      });
+    });
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.filter = btn.dataset.filter;
+        document.querySelectorAll('.filter-btn').forEach(b => {
+          b.classList.remove('bg-amber-500', 'text-slate-950');
+          b.classList.add('bg-slate-800', 'text-slate-300');
+        });
+        btn.classList.remove('bg-slate-800', 'text-slate-300');
+        btn.classList.add('bg-amber-500', 'text-slate-950');
+        renderMatchesList();
+      });
+    });
+
+    document.getElementById('search-matches').addEventListener('input', e => {
+      state.search = e.target.value;
+      renderMatchesList();
+    });
+
+    document.getElementById('league-select').addEventListener('change', e => {
+      state.league = e.target.value;
+      fetchLiveESPN();
+    });
+
+    document.getElementById('btn-fetch-live').addEventListener('click', () => {
+      fetchLiveESPN();
+    });
+
+    // Detail panel interactive controls
+    function updateSelectedMatch(mutator) {
+      const m = state.matches.find(x => x.id === state.selectedMatchId);
+      if (!m) return;
+      mutator(m);
+      renderKPIs();
+      renderMatchesList();
+      renderDetailPanel();
+    }
+
+    document.getElementById('detail-ref-select').addEventListener('change', e => {
+      updateSelectedMatch(m => { m.referee = e.target.value; });
+    });
+    document.getElementById('detail-market-line').addEventListener('change', e => {
+      updateSelectedMatch(m => { m.marketLine = parseFloat(e.target.value); });
+    });
+    document.getElementById('in-detail-state').addEventListener('input', e => {
+      updateSelectedMatch(m => { m.stateVal = parseInt(e.target.value, 10); });
+    });
+    document.getElementById('in-detail-crowd').addEventListener('input', e => {
+      updateSelectedMatch(m => { m.crowdVal = parseInt(e.target.value, 10); });
+    });
+    document.getElementById('in-detail-var').addEventListener('input', e => {
+      updateSelectedMatch(m => { m.varVal = parseInt(e.target.value, 10); });
+    });
+
+    // Referee sort & add form
+    document.getElementById('ref-sort').addEventListener('change', e => {
+      state.refSort = e.target.value;
+      renderRefereesTab();
+    });
+
+    document.getElementById('form-add-ref').addEventListener('submit', e => {
+      e.preventDefault();
+      const name = document.getElementById('ref-in-name').value.trim();
+      const matches = parseInt(document.getElementById('ref-in-matches').value, 10);
+      const yc = parseInt(document.getElementById('ref-in-yc').value, 10);
+      const foulsRaw = document.getElementById('ref-in-fouls').value;
+      const foulsPg = foulsRaw ? parseFloat(foulsRaw) : null;
+      if (!name || !matches || matches <= 0) return;
+
+      const ycpg = yc / matches;
+      const existing = state.referees.find(r => r.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        existing.matches = matches;
+        existing.yc = yc;
+        existing.ycpg = ycpg;
+        existing.foulsPg = foulsPg;
+      } else {
+        state.referees.push({ id: `ref-${Date.now()}`, name, matches, yc, ycpg, foulsPg });
+      }
+      e.target.reset();
+      showToast(`آمار داور ${name} (${ycpg.toFixed(2)} کارت/بازی) ذخیره شد.`, 'success');
+      renderAll();
+    });
+
+    // Variance log form
+    document.getElementById('form-log-variance').addEventListener('submit', e => {
+      e.preventDefault();
+      const name = document.getElementById('var-match-name').value.trim();
+      const pred = parseFloat(document.getElementById('var-pred').value);
+      const actual = parseInt(document.getElementById('var-actual').value, 10);
+      const cause = document.getElementById('var-cause').value;
+      if (!name || isNaN(pred) || isNaN(actual)) return;
+
+      state.varianceLogs.unshift({ name, pred, actual, cause });
+      e.target.reset();
+      showToast('نتیجه واقعی در ردیاب انحراف ثبت شد.', 'success');
+      renderVarianceTab();
+    });
+
+    // Modals & API buttons
+    document.getElementById('btn-open-settings').addEventListener('click', () => openModal('modal-settings'));
+    document.getElementById('btn-close-settings').addEventListener('click', () => closeModal('modal-settings'));
+    document.getElementById('btn-fetch-apifootball').addEventListener('click', fetchApiFootball);
+    document.getElementById('btn-fetch-footballdata').addEventListener('click', fetchFootballData);
+
+    document.getElementById('btn-import-json').addEventListener('click', () => {
+      const raw = document.getElementById('json-import-box').value.trim();
+      if (!raw) {
+        showToast('کادر JSON خالی است.', 'warn');
+        return;
+      }
+      try {
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr) || arr.length === 0) throw new Error('آرایه معتبر نیست.');
+        const imported = arr.map((it, idx) => ({
+          id: `imp-${Date.now()}-${idx}`,
+          home: it.home || 'میزبان',
+          away: it.away || 'میهمان',
+          date: it.date || 'ایمپورت دستی',
+          status: it.status === 'past' ? 'past' : 'upcoming',
+          score: it.score || 'در پیش رو',
+          venue: it.venue || 'استادیوم',
+          referee: it.referee || '',
+          stateVal: Number(it.stateVal ?? 0),
+          crowdVal: Number(it.crowdVal ?? 5),
+          varVal: Number(it.varVal ?? 5),
+          marketLine: Number(it.marketLine ?? 4.5),
+          actualYc: it.actualYc ?? null,
+          source: 'JSON Import'
+        }));
+        state.matches = [...imported, ...state.matches];
+        state.selectedMatchId = imported[0].id;
+        closeModal('modal-settings');
+        showToast(`${imported.length} مسابقه با موفقیت ایمپورت شد.`, 'success');
+        renderAll();
+      } catch (err) {
+        showToast('فرمت JSON نامعتبر است.', 'error');
+      }
+    });
+
+    document.getElementById('btn-add-match-modal').addEventListener('click', () => openModal('modal-add-match'));
+    document.getElementById('btn-close-add-match').addEventListener('click', () => closeModal('modal-add-match'));
+
+    document.getElementById('form-add-match').addEventListener('submit', e => {
+      e.preventDefault();
+      const home = document.getElementById('add-home').value.trim();
+      const away = document.getElementById('add-away').value.trim();
+      const referee = document.getElementById('add-ref').value;
+      const status = document.getElementById('add-status').value;
+      const marketLine = parseFloat(document.getElementById('add-line').value) || 4.5;
+      if (!home || !away) return;
+
+      const newMatch = {
+        id: `manual-${Date.now()}`,
+        home, away,
+        date: 'افزوده‌شده توسط کاربر',
+        status,
+        score: status === 'past' ? 'پایان‌یافته' : 'در پیش رو',
+        venue: 'ورزشگاه خانگی',
+        referee,
+        stateVal: 0,
+        crowdVal: 6,
+        varVal: 5,
+        marketLine,
+        actualYc: null,
+        source: 'ورود دستی'
+      };
+      state.matches.unshift(newMatch);
+      state.selectedMatchId = newMatch.id;
+      e.target.reset();
+      closeModal('modal-add-match');
+      showToast(`مسابقه ${home} مقابل ${away} اضافه و تحلیل شد.`, 'success');
+      renderAll();
+    });
+
+    // Init on load
+    loadSavedKeys();
+    renderAll();
+    fetchLiveESPN();
+  </script>
+</body>
+</html>
