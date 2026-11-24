@@ -7,12 +7,12 @@ import os
 import sys
 import urllib.request
 
-LEAGUE_DIVS = {
-    "eng.1": "E0",
-    "esp.1": "SP1",
-    "ita.1": "I1",
-    "ger.1": "D1",
-    "fra.1": "F1",
+LEAGUE_CONFIG = {
+    "eng.1": {"div": "E0", "tsdb": "4328", "line": 4.0},
+    "esp.1": {"div": "SP1", "tsdb": "4335", "line": 4.5},
+    "ita.1": {"div": "I1", "tsdb": "4332", "line": 4.5},
+    "ger.1": {"div": "D1", "tsdb": "4331", "line": 4.0},
+    "fra.1": {"div": "F1", "tsdb": "4334", "line": 4.0},
 }
 
 SEASONS_TO_TRY = ["2627", "2526", "2425"]
@@ -60,7 +60,7 @@ def fetch_league_completed(div_code: str):
 
 
 def fetch_upcoming_from_fduk() -> dict:
-    by_div = {v: [] for v in LEAGUE_DIVS.values()}
+    by_div = {cfg["div"]: [] for cfg in LEAGUE_CONFIG.values()}
     try:
         rows = fetch_csv_rows(FIXTURES_URL)
         for row in rows:
@@ -73,60 +73,84 @@ def fetch_upcoming_from_fduk() -> dict:
     return by_div
 
 
-def fetch_upcoming_from_espn(league_key: str, market_line: float) -> list:
-    """Fetches upcoming/live matches day-by-day (single YYYYMMDD avoids HTTP 400)."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    seen = set()
+def fetch_upcoming_from_tsdb(league_key: str, tsdb_id: str, market_line: float) -> list:
+    url = f"https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id={tsdb_id}"
     upcoming = []
+    try:
+        data = json.loads(http_get_text(url))
+        events = data.get("events") or []
+        for idx, ev in enumerate(events[:15]):
+            home = (ev.get("strHomeTeam") or "").strip()
+            away = (ev.get("strAwayTeam") or "").strip()
+            if not home or not away:
+                continue
+            date_s = (ev.get("dateEvent") or "").strip()
+            time_s = (ev.get("strTime") or "").strip()[:5]
+            dt_label = f"{date_s} {time_s}".strip() or "پیش رو"
+            upcoming.append({
+                "id": f"tsdb-up-{league_key}-{ev.get('idEvent', idx)}",
+                "home": home,
+                "away": away,
+                "date": dt_label,
+                "status": "upcoming",
+                "isLive": False,
+                "score": "در پیش رو",
+                "venue": (ev.get("strVenue") or "ورزشگاه رسمی").strip(),
+                "referee": "",
+                "refAssignedByApi": False,
+                "stateVal": 0,
+                "crowdVal": 6,
+                "varVal": 5,
+                "marketLine": market_line,
+                "actualYc": None,
+                "source": "TheSportsDB (Upcoming)",
+            })
+        print(f"[OK] TheSportsDB upcoming {league_key}: {len(upcoming)} matches")
+    except Exception as exc:
+        print(f"[WARN] TheSportsDB upcoming {league_key} failed: {exc}")
+    return upcoming
 
-    for offset in range(0, 8):
-        day_str = (now + datetime.timedelta(days=offset)).strftime("%Y%m%d")
-        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_key}/scoreboard?dates={day_str}"
-        try:
-            data = json.loads(http_get_text(url))
-            for ev in data.get("events", []):
-                ev_id = str(ev.get("id", ""))
-                if not ev_id or ev_id in seen:
-                    continue
-                st = ev.get("status", {}).get("type", {}).get("state", "pre")
-                if st == "post":
-                    continue
-                seen.add(ev_id)
-                comp = (ev.get("competitions") or [{}])[0]
-                competitors = comp.get("competitors") or []
-                home_obj = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0] if competitors else {})
-                away_obj = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1] if len(competitors) > 1 else {})
-                officials = comp.get("officials") or []
-                ref_name = officials[0].get("displayName", "") if officials else ""
-                date_iso = ev.get("date", "")
-                date_label = date_iso[:16].replace("T", " ") if date_iso else day_str
-                is_live = st == "in"
-                if is_live:
-                    clock = ev.get("status", {}).get("displayClock", "")
-                    date_label = f"زنده ({clock})"
 
-                upcoming.append({
-                    "id": f"espn-up-{league_key}-{ev_id}",
-                    "home": home_obj.get("team", {}).get("displayName", "میزبان"),
-                    "away": away_obj.get("team", {}).get("displayName", "میهمان"),
-                    "date": date_label,
-                    "status": "upcoming",
-                    "isLive": is_live,
-                    "score": f"{home_obj.get('score', 0)} - {away_obj.get('score', 0)}" if is_live else "در پیش رو",
-                    "venue": comp.get("venue", {}).get("fullName", "ورزشگاه رسمی"),
-                    "referee": ref_name,
-                    "refAssignedByApi": bool(ref_name),
-                    "stateVal": 0,
-                    "crowdVal": 6,
-                    "varVal": 5,
-                    "marketLine": market_line,
-                    "actualYc": None,
-                    "source": "ESPN Upcoming",
-                })
-        except Exception:
-            continue
-
-    print(f"[OK] ESPN upcoming {league_key}: {len(upcoming)} matches")
+def fetch_upcoming_from_espn(league_key: str, market_line: float) -> list:
+    """Fallback: fetches active/next matchweek from ESPN default scoreboard."""
+    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_key}/scoreboard"
+    upcoming = []
+    try:
+        data = json.loads(http_get_text(url))
+        for idx, ev in enumerate(data.get("events", [])):
+            st = ev.get("status", {}).get("type", {}).get("state", "pre")
+            if st == "post":
+                continue
+            comp = (ev.get("competitions") or [{}])[0]
+            competitors = comp.get("competitors") or []
+            home_obj = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0] if competitors else {})
+            away_obj = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1] if len(competitors) > 1 else {})
+            officials = comp.get("officials") or []
+            ref_name = officials[0].get("displayName", "") if officials else ""
+            date_iso = ev.get("date", "")
+            date_label = date_iso[:16].replace("T", " ") if date_iso else "پیش رو"
+            is_live = st == "in"
+            upcoming.append({
+                "id": f"espn-up-{league_key}-{ev.get('id', idx)}",
+                "home": home_obj.get("team", {}).get("displayName", "میزبان"),
+                "away": away_obj.get("team", {}).get("displayName", "میهمان"),
+                "date": date_label,
+                "status": "upcoming",
+                "isLive": is_live,
+                "score": f"{home_obj.get('score', 0)} - {away_obj.get('score', 0)}" if is_live else "در پیش رو",
+                "venue": comp.get("venue", {}).get("fullName", "ورزشگاه رسمی"),
+                "referee": ref_name,
+                "refAssignedByApi": bool(ref_name),
+                "stateVal": 0,
+                "crowdVal": 6,
+                "varVal": 5,
+                "marketLine": market_line,
+                "actualYc": None,
+                "source": "ESPN (Upcoming)",
+            })
+        print(f"[OK] ESPN default upcoming {league_key}: {len(upcoming)} matches")
+    except Exception as exc:
+        print(f"[WARN] ESPN default upcoming {league_key} failed: {exc}")
     return upcoming
 
 
@@ -136,7 +160,7 @@ def main() -> None:
 
     output = {
         "updatedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "football-data.co.uk + ESPN Upcoming",
+        "source": "football-data.co.uk + TheSportsDB",
         "leagues": {},
         "referees": [],
     }
@@ -144,9 +168,10 @@ def main() -> None:
     ref_agg = {}
     total_matches = 0
 
-    for league_key, div_code in LEAGUE_DIVS.items():
+    for league_key, cfg in LEAGUE_CONFIG.items():
+        div_code = cfg["div"]
+        market_line = cfg["line"]
         season, completed_rows = fetch_league_completed(div_code)
-        market_line = 4.5 if league_key in ("esp.1", "ita.1") else 4.0
 
         for r in completed_rows:
             ref = (r.get("Referee") or "").strip()
@@ -164,7 +189,7 @@ def main() -> None:
 
         matches = []
 
-        # 1. Upcoming fixtures: try football-data.co.uk first, fallback to ESPN day-by-day (next 7 days)
+        # 1. Triple-fallback upcoming matches: football-data.co.uk -> TheSportsDB -> ESPN default
         fduk_up = upcoming_by_div.get(div_code, [])[:20]
         if fduk_up:
             for idx, r in enumerate(fduk_up):
@@ -190,7 +215,11 @@ def main() -> None:
                     "source": "football-data.co.uk (Upcoming)",
                 })
         else:
-            matches.extend(fetch_upcoming_from_espn(league_key, market_line))
+            tsdb_up = fetch_upcoming_from_tsdb(league_key, cfg["tsdb"], market_line)
+            if tsdb_up:
+                matches.extend(tsdb_up)
+            else:
+                matches.extend(fetch_upcoming_from_espn(league_key, market_line))
 
         # 2. Most recent 20 completed matches (newest first)
         recent_completed = list(reversed(completed_rows[-20:]))
