@@ -1,4 +1,3 @@
-```python
 import csv
 import datetime
 import io
@@ -187,4 +186,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-```
