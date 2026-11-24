@@ -1,3 +1,4 @@
+```python
 import csv
 import datetime
 import io
@@ -18,16 +19,20 @@ SEASONS_TO_TRY = ["2627", "2526", "2425"]
 FIXTURES_URL = "https://www.football-data.co.uk/fixtures.csv"
 
 
-def fetch_csv_rows(url: str) -> list:
+def http_get_text(url: str) -> str:
     req = urllib.request.Request(
         url,
         headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/csv,text/plain,*/*",
+            "Accept": "application/json,text/csv,text/plain,*/*",
         },
     )
-    with urllib.request.urlopen(req, timeout=25) as resp:
-        raw = resp.read().decode("utf-8-sig", errors="replace")
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return resp.read().decode("utf-8-sig", errors="replace")
+
+
+def fetch_csv_rows(url: str) -> list:
+    raw = http_get_text(url)
     reader = csv.DictReader(io.StringIO(raw))
     return [row for row in reader if row.get("HomeTeam") and row.get("AwayTeam")]
 
@@ -54,7 +59,7 @@ def fetch_league_completed(div_code: str):
     return "", []
 
 
-def fetch_upcoming_fixtures() -> dict:
+def fetch_upcoming_from_fduk() -> dict:
     by_div = {v: [] for v in LEAGUE_DIVS.values()}
     try:
         rows = fetch_csv_rows(FIXTURES_URL)
@@ -68,13 +73,70 @@ def fetch_upcoming_fixtures() -> dict:
     return by_div
 
 
+def fetch_upcoming_from_espn(league_key: str, market_line: float) -> list:
+    """Fetches upcoming/live matches day-by-day (single YYYYMMDD avoids HTTP 400)."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    seen = set()
+    upcoming = []
+
+    for offset in range(0, 8):
+        day_str = (now + datetime.timedelta(days=offset)).strftime("%Y%m%d")
+        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_key}/scoreboard?dates={day_str}"
+        try:
+            data = json.loads(http_get_text(url))
+            for ev in data.get("events", []):
+                ev_id = str(ev.get("id", ""))
+                if not ev_id or ev_id in seen:
+                    continue
+                st = ev.get("status", {}).get("type", {}).get("state", "pre")
+                if st == "post":
+                    continue
+                seen.add(ev_id)
+                comp = (ev.get("competitions") or [{}])[0]
+                competitors = comp.get("competitors") or []
+                home_obj = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0] if competitors else {})
+                away_obj = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1] if len(competitors) > 1 else {})
+                officials = comp.get("officials") or []
+                ref_name = officials[0].get("displayName", "") if officials else ""
+                date_iso = ev.get("date", "")
+                date_label = date_iso[:16].replace("T", " ") if date_iso else day_str
+                is_live = st == "in"
+                if is_live:
+                    clock = ev.get("status", {}).get("displayClock", "")
+                    date_label = f"زنده ({clock})"
+
+                upcoming.append({
+                    "id": f"espn-up-{league_key}-{ev_id}",
+                    "home": home_obj.get("team", {}).get("displayName", "میزبان"),
+                    "away": away_obj.get("team", {}).get("displayName", "میهمان"),
+                    "date": date_label,
+                    "status": "upcoming",
+                    "isLive": is_live,
+                    "score": f"{home_obj.get('score', 0)} - {away_obj.get('score', 0)}" if is_live else "در پیش رو",
+                    "venue": comp.get("venue", {}).get("fullName", "ورزشگاه رسمی"),
+                    "referee": ref_name,
+                    "refAssignedByApi": bool(ref_name),
+                    "stateVal": 0,
+                    "crowdVal": 6,
+                    "varVal": 5,
+                    "marketLine": market_line,
+                    "actualYc": None,
+                    "source": "ESPN Upcoming",
+                })
+        except Exception:
+            continue
+
+    print(f"[OK] ESPN upcoming {league_key}: {len(upcoming)} matches")
+    return upcoming
+
+
 def main() -> None:
     now = datetime.datetime.now(datetime.timezone.utc)
-    upcoming_by_div = fetch_upcoming_fixtures()
+    upcoming_by_div = fetch_upcoming_from_fduk()
 
     output = {
         "updatedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "football-data.co.uk",
+        "source": "football-data.co.uk + ESPN Upcoming",
         "leagues": {},
         "referees": [],
     }
@@ -86,7 +148,6 @@ def main() -> None:
         season, completed_rows = fetch_league_completed(div_code)
         market_line = 4.5 if league_key in ("esp.1", "ita.1") else 4.0
 
-        # Aggregate real referee yellow card & foul stats from full season
         for r in completed_rows:
             ref = (r.get("Referee") or "").strip()
             hy = safe_int(r.get("HY"))
@@ -103,29 +164,33 @@ def main() -> None:
 
         matches = []
 
-        # 1. Upcoming fixtures first
-        for idx, r in enumerate(upcoming_by_div.get(div_code, [])[:20]):
-            date_str = (r.get("Date") or "").strip()
-            time_str = (r.get("Time") or "").strip()
-            dt_label = f"{date_str} {time_str}".strip() or "پیش رو"
-            matches.append({
-                "id": f"fduk-up-{league_key}-{idx}",
-                "home": r["HomeTeam"].strip(),
-                "away": r["AwayTeam"].strip(),
-                "date": dt_label,
-                "status": "upcoming",
-                "isLive": False,
-                "score": "در پیش رو",
-                "venue": "مسابقه رسمی لیگ",
-                "referee": (r.get("Referee") or "").strip(),
-                "refAssignedByApi": bool((r.get("Referee") or "").strip()),
-                "stateVal": 0,
-                "crowdVal": 6,
-                "varVal": 5,
-                "marketLine": market_line,
-                "actualYc": None,
-                "source": "football-data.co.uk (Upcoming)",
-            })
+        # 1. Upcoming fixtures: try football-data.co.uk first, fallback to ESPN day-by-day (next 7 days)
+        fduk_up = upcoming_by_div.get(div_code, [])[:20]
+        if fduk_up:
+            for idx, r in enumerate(fduk_up):
+                date_str = (r.get("Date") or "").strip()
+                time_str = (r.get("Time") or "").strip()
+                dt_label = f"{date_str} {time_str}".strip() or "پیش رو"
+                matches.append({
+                    "id": f"fduk-up-{league_key}-{idx}",
+                    "home": r["HomeTeam"].strip(),
+                    "away": r["AwayTeam"].strip(),
+                    "date": dt_label,
+                    "status": "upcoming",
+                    "isLive": False,
+                    "score": "در پیش رو",
+                    "venue": "مسابقه رسمی لیگ",
+                    "referee": (r.get("Referee") or "").strip(),
+                    "refAssignedByApi": bool((r.get("Referee") or "").strip()),
+                    "stateVal": 0,
+                    "crowdVal": 6,
+                    "varVal": 5,
+                    "marketLine": market_line,
+                    "actualYc": None,
+                    "source": "football-data.co.uk (Upcoming)",
+                })
+        else:
+            matches.extend(fetch_upcoming_from_espn(league_key, market_line))
 
         # 2. Most recent 20 completed matches (newest first)
         recent_completed = list(reversed(completed_rows[-20:]))
@@ -161,7 +226,6 @@ def main() -> None:
         output["leagues"][league_key] = matches
         total_matches += len(matches)
 
-    # Save aggregated referee stats
     for name, st in sorted(ref_agg.items(), key=lambda x: x[1]["matches"], reverse=True):
         m_cnt = st["matches"]
         output["referees"].append({
@@ -174,7 +238,7 @@ def main() -> None:
         })
 
     if total_matches == 0:
-        print("[ERROR] No matches fetched from football-data.co.uk!")
+        print("[ERROR] No matches fetched!")
         sys.exit(1)
 
     os.makedirs("data", exist_ok=True)
@@ -186,3 +250,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+```
