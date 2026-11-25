@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-25T13:08:38Z",
+  "updatedAt": "2026-11-25T18:45:40Z",
   "source": "football-data.co.uk + OpenFootball + ESPN",
   "leagues": {
     "eng.1": [
@@ -3167,10 +3167,10 @@
         "id": "espn-uefa.champions-401915378",
         "home": "Sabah FK",
         "away": "Barcelona",
-        "date": "2026-11-25 17:45",
+        "date": "زنده (45'+1')",
         "status": "upcoming",
-        "isLive": false,
-        "score": "در پیش رو",
+        "isLive": true,
+        "score": "0 - 1",
         "venue": "Baku Olympic Stadium",
         "referee": "",
         "refAssignedByApi": false,
@@ -3178,17 +3178,17 @@
         "crowdVal": 7,
         "varVal": 6,
         "marketLine": 4.5,
-        "actualYc": null,
+        "actualYc": 0,
         "source": "ESPN (Server)"
       },
       {
         "id": "espn-uefa.champions-401915293",
         "home": "Slavia Prague",
         "away": "Villarreal",
-        "date": "2026-11-25 17:45",
+        "date": "زنده (45'+3')",
         "status": "upcoming",
-        "isLive": false,
-        "score": "در پیش رو",
+        "isLive": true,
+        "score": "0 - 0",
         "venue": "Fortuna Arena",
         "referee": "",
         "refAssignedByApi": false,
@@ -3196,7 +3196,7 @@
         "crowdVal": 7,
         "varVal": 6,
         "marketLine": 4.5,
-        "actualYc": null,
+        "actualYc": 4,
         "source": "ESPN (Server)"
       },
       {
